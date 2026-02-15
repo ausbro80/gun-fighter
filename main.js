@@ -32,7 +32,7 @@ function fit() {
 }
 window.addEventListener("resize", fit);
 
-/* 비디오 object-fit cover 때문에 생기는 오버레이 밀림 보정 */
+/* object-fit cover 보정 */
 function getCoverTransform() {
   const cw = hud.clientWidth;
   const ch = hud.clientHeight;
@@ -47,7 +47,7 @@ function getCoverTransform() {
   const offX = (cw - drawW) / 2;
   const offY = (ch - drawH) / 2;
 
-  return { cw, ch, vw, vh, scale, offX, offY };
+  return { vw, vh, scale, offX, offY };
 }
 
 function lmToScreen(lm) {
@@ -58,14 +58,19 @@ function lmToScreen(lm) {
   };
 }
 
-function screenToWorld(x, y) {
+/* 화면 좌표를 zPlane 평면으로 투영 */
+function screenToWorldOnPlane(x, y, zPlane) {
   const w = hud.clientWidth;
   const h = hud.clientHeight;
+
   const nx = (x / w) * 2 - 1;
   const ny = -((y / h) * 2 - 1);
-  const v = new THREE.Vector3(nx, ny, 0);
-  v.unproject(camera);
-  return v;
+
+  const p = new THREE.Vector3(nx, ny, 0.5).unproject(camera);
+  const dir = p.sub(camera.position).normalize();
+
+  const t = (zPlane - camera.position.z) / dir.z;
+  return camera.position.clone().addScaledVector(dir, t);
 }
 
 /* Three */
@@ -82,10 +87,10 @@ renderer.domElement.style.height = "100%";
 renderer.domElement.style.pointerEvents = "none";
 document.getElementById("app").appendChild(renderer.domElement);
 
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 const key = new THREE.DirectionalLight(0xffffff, 1.0);
 key.position.set(2, 3, 4);
 scene.add(key);
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
 function makeGlowTexture() {
   const c = document.createElement("canvas");
@@ -157,7 +162,6 @@ class Target {
 
     if (type === "ufo") {
       const g = new THREE.Group();
-
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry(0.32, 0.09, 12, 36),
         new THREE.MeshStandardMaterial({
@@ -197,7 +201,6 @@ class Target {
       this.tint = new THREE.Color(0x7be3ff);
     } else {
       const g = new THREE.Group();
-
       const body = new THREE.Mesh(
         new THREE.SphereGeometry(0.22, 20, 20),
         new THREE.MeshStandardMaterial({
@@ -208,7 +211,6 @@ class Target {
           metalness: 0.1
         })
       );
-
       const face = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.35, depthWrite: false }));
       face.scale.set(0.7, 0.7, 0.7);
       face.position.z = 0.25;
@@ -222,8 +224,8 @@ class Target {
       this.tint = new THREE.Color(0xff5fd7);
     }
 
-    this.obj.position.set(rand(-2.2, 2.2), rand(-1.3, 1.9), rand(-2.4, -1.4));
-    this.v = new THREE.Vector3(rand(-0.6, 0.6), rand(-0.45, 0.45), 0);
+    this.obj.position.set(rand(-2.2, 2.2), rand(-1.3, 1.9), rand(-2.8, -1.2));
+    this.v = new THREE.Vector3(rand(-0.6, 0.6), rand(-0.45, 0.45), rand(-0.22, 0.22));
     scene.add(this.obj);
   }
 
@@ -237,9 +239,11 @@ class Target {
 
     this.obj.position.x += (this.v.x + wobX) * dt;
     this.obj.position.y += (this.v.y + wobY) * dt;
+    this.obj.position.z += this.v.z * dt;
 
     if (this.obj.position.x < -2.6 || this.obj.position.x > 2.6) this.v.x *= -1;
     if (this.obj.position.y < -1.8 || this.obj.position.y > 2.2) this.v.y *= -1;
+    if (this.obj.position.z < -3.2 || this.obj.position.z > -0.9) this.v.z *= -1;
   }
 
   kill() {
@@ -297,7 +301,7 @@ class PaintBullet {
 }
 const bullets = [];
 
-/* Gun */
+/* Gun model */
 function makeGun() {
   const g = new THREE.Group();
 
@@ -353,7 +357,7 @@ const gun = makeGun();
 scene.add(gun.group);
 gun.group.visible = false;
 
-/* Score */
+/* Game state */
 let score = 0;
 let combo = 0;
 let comboUntil = 0;
@@ -364,7 +368,7 @@ function setHUD() {
   targetsEl.textContent = String(targets.filter(t => t.alive).length);
 }
 
-/* Hand */
+/* Hand state */
 let lastLandmarks = null;
 
 let hand = {
@@ -475,10 +479,14 @@ hands.onResults((results) => {
 
     hand.open = smooth.openScore > 0.55;
 
-    const onDist = 145;
-    const offDist = 165;
-    if (!hand.trigger && smooth.curlDist < onDist) hand.trigger = true;
-    if (hand.trigger && smooth.curlDist > offDist) hand.trigger = false;
+    // 손 크기 비율 기반 트리거
+    const palmSpan = dist(smooth.wristX, smooth.wristY, smooth.palmX, smooth.palmY);
+    const curl = smooth.curlDist / Math.max(1, palmSpan);
+
+    const onRatio = 0.78;
+    const offRatio = 0.88;
+    if (!hand.trigger && curl < onRatio) hand.trigger = true;
+    if (hand.trigger && curl > offRatio) hand.trigger = false;
   } else {
     lastLandmarks = null;
     hand.has = false;
@@ -502,7 +510,7 @@ async function startCamera() {
   await mpCamera.start();
 }
 
-/* Hand skeleton draw */
+/* Hand skeleton */
 function drawHandDebug() {
   if (!lastLandmarks) return;
 
@@ -532,7 +540,7 @@ function drawHandDebug() {
   hctx.restore();
 }
 
-/* Gun attach and shoot */
+/* Gun attach + shoot */
 let shootCooldown = 0;
 
 function updateGun(dt) {
@@ -543,48 +551,65 @@ function updateGun(dt) {
 
   gun.group.visible = true;
 
-  const wristW = screenToWorld(hand.wristX, hand.wristY);
-  const indexMcpW = screenToWorld(hand.indexMcpX, hand.indexMcpY);
-  const palmW = screenToWorld(hand.palmX, hand.palmY);
+  const zPlane = 0;
 
-  wristW.z = 0;
-  indexMcpW.z = 0;
-  palmW.z = 0;
+  const wristW = screenToWorldOnPlane(hand.wristX, hand.wristY, zPlane);
+  const indexMcpW = screenToWorldOnPlane(hand.indexMcpX, hand.indexMcpY, zPlane);
+  const palmW = screenToWorldOnPlane(hand.palmX, hand.palmY, zPlane);
 
   const forward = indexMcpW.clone().sub(wristW);
   if (forward.length() < 0.001) forward.set(1, 0, 0);
   forward.normalize();
 
-  const up = palmW.clone().sub(wristW);
-  if (up.length() < 0.001) up.set(0, 1, 0);
-  up.normalize();
+  const upHint = palmW.clone().sub(wristW);
+  if (upHint.length() < 0.001) upHint.set(0, 1, 0);
+  upHint.normalize();
 
-  const right = new THREE.Vector3().crossVectors(forward, up).normalize();
-  const fixedUp = new THREE.Vector3().crossVectors(right, forward).normalize();
+  const right = new THREE.Vector3().crossVectors(forward, upHint).normalize();
+  const up = new THREE.Vector3().crossVectors(right, forward).normalize();
 
-  const m = new THREE.Matrix4().makeBasis(forward, fixedUp, right);
-  const q = new THREE.Quaternion().setFromRotationMatrix(m);
+  // 손 크기 기반 스케일
+  const palmPx = dist(hand.wristX, hand.wristY, hand.palmX, hand.palmY);
+  const palmPxClamped = clamp(palmPx, 90, 220);
 
-  const desiredPos = wristW.clone().addScaledVector(forward, 0.65).addScaledVector(fixedUp, 0.05);
-  gun.group.position.lerp(desiredPos, clamp(dt * 14, 0, 1));
-  gun.group.quaternion.slerp(q, clamp(dt * 14, 0, 1));
-  gun.group.position.z = -0.6;
+  const wA = screenToWorldOnPlane(hand.palmX, hand.palmY, zPlane);
+  const wB = screenToWorldOnPlane(hand.palmX + 100, hand.palmY, zPlane);
+  const unitsPerPx = wA.distanceTo(wB) / 100;
+
+  const palmWorld = palmPxClamped * unitsPerPx;
+  const base = 0.55;
+  const s = clamp(palmWorld / base, 0.75, 1.35);
+  gun.group.scale.lerp(new THREE.Vector3(s, s, s), clamp(dt * 16, 0, 1));
+
+  // 손에 감기는 오프셋
+  const anchor = wristW.clone()
+    .addScaledVector(forward, 0.28 * s)
+    .addScaledVector(right, 0.12 * s)
+    .addScaledVector(up, 0.02 * s);
+
+  const basis = new THREE.Matrix4().makeBasis(forward, up, right);
+  const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+
+  // 모델 누움 보정
+  const fix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+  q.multiply(fix);
+
+  gun.group.position.lerp(anchor, clamp(dt * 18, 0, 1));
+  gun.group.quaternion.slerp(q, clamp(dt * 18, 0, 1));
 
   const t = nowMs();
   if (hand.trigger && t > shootCooldown) {
-    shootCooldown = t + 85;
+    shootCooldown = t + 90;
 
     const muzzleW = gun.muzzle.getWorldPosition(new THREE.Vector3());
-    const vel = forward.clone().multiplyScalar(8.8);
-    vel.z = -2.2;
+    const vel = forward.clone().multiplyScalar(8.5);
 
-    const tint = new THREE.Color(0x7be3ff);
-    bullets.push(new PaintBullet(muzzleW, vel, tint));
-    burst.spawn(muzzleW, 10, 0.8, tint);
+    bullets.push(new PaintBullet(muzzleW, vel, new THREE.Color(0x7be3ff)));
+    burst.spawn(muzzleW, 10, 0.8, new THREE.Color(0x7be3ff));
   }
 }
 
-/* Collisions */
+/* Hits */
 function checkHits() {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
@@ -616,7 +641,7 @@ function checkHits() {
   }
 }
 
-/* HUD */
+/* HUD draw */
 function drawHud() {
   const w = hud.clientWidth;
   const h = hud.clientHeight;
@@ -722,7 +747,7 @@ btnStart.addEventListener("click", async () => {
     resetAll();
     last = performance.now();
   } catch (e) {
-    alert("카메라 권한이 필요합니다. Safari 설정에서 카메라 허용 후 다시 시도해주세요.");
+    alert("카메라 권한이 필요합니다. 브라우저에서 카메라 허용 후 다시 시도해주세요.");
     console.error(e);
   }
 });
