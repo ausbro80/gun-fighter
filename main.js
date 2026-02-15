@@ -73,6 +73,19 @@ function screenToWorldOnPlane(x, y, zPlane) {
   return camera.position.clone().addScaledVector(dir, t);
 }
 
+/* 화면 좌표에서 카메라 레이 만들기 */
+function screenRay(x, y) {
+  const w = hud.clientWidth;
+  const h = hud.clientHeight;
+
+  const nx = (x / w) * 2 - 1;
+  const ny = -((y / h) * 2 - 1);
+
+  const p = new THREE.Vector3(nx, ny, 0.5).unproject(camera);
+  const dir = p.sub(camera.position).normalize();
+  return { origin: camera.position.clone(), dir };
+}
+
 /* Three */
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
@@ -87,10 +100,13 @@ renderer.domElement.style.height = "100%";
 renderer.domElement.style.pointerEvents = "none";
 document.getElementById("app").appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+scene.add(new THREE.AmbientLight(0xffffff, 0.32));
 const key = new THREE.DirectionalLight(0xffffff, 1.0);
 key.position.set(2, 3, 4);
 scene.add(key);
+
+/* 깊이감 */
+scene.fog = new THREE.Fog(0x000000, 6.5, 14.0);
 
 function makeGlowTexture() {
   const c = document.createElement("canvas");
@@ -128,7 +144,7 @@ class Burst {
       const s = rand(0.10, 0.26) * scale;
       spr.scale.set(s, s, s);
 
-      const vel = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-0.4, 0.6))
+      const vel = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-0.6, 0.8))
         .normalize()
         .multiplyScalar(rand(1.2, 3.0) * scale);
 
@@ -162,70 +178,75 @@ class Target {
 
     if (type === "ufo") {
       const g = new THREE.Group();
+
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.32, 0.09, 12, 36),
+        new THREE.TorusGeometry(0.42, 0.12, 12, 36),
         new THREE.MeshStandardMaterial({
           color: 0xffffff,
           emissive: new THREE.Color(0x7be3ff),
-          emissiveIntensity: 0.9,
-          roughness: 0.28,
+          emissiveIntensity: 0.85,
+          roughness: 0.26,
           metalness: 0.25
         })
       );
       ring.rotation.x = Math.PI * 0.5;
 
       const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 18, 18, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        new THREE.SphereGeometry(0.28, 18, 18, 0, Math.PI * 2, 0, Math.PI * 0.55),
         new THREE.MeshStandardMaterial({
           color: 0xffffff,
           emissive: new THREE.Color(0xaaffcc),
-          emissiveIntensity: 0.6,
+          emissiveIntensity: 0.55,
           roughness: 0.22,
           metalness: 0.2,
           transparent: true,
           opacity: 0.85
         })
       );
-      dome.position.y = 0.10;
+      dome.position.y = 0.12;
 
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.55, depthWrite: false }));
-      glow.scale.set(0.95, 0.95, 0.95);
+      glow.scale.set(1.25, 1.25, 1.25);
 
       g.add(ring);
       g.add(dome);
       g.add(glow);
 
       this.obj = g;
-      this.radius = 0.42;
-      this.points = 15;
+      this.radius = 0.55;
+      this.points = 18;
       this.tint = new THREE.Color(0x7be3ff);
     } else {
       const g = new THREE.Group();
+
       const body = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 20, 20),
+        new THREE.SphereGeometry(0.30, 20, 20),
         new THREE.MeshStandardMaterial({
           color: 0xffffff,
           emissive: new THREE.Color(0xff5fd7),
-          emissiveIntensity: 0.9,
+          emissiveIntensity: 0.85,
           roughness: 0.35,
           metalness: 0.1
         })
       );
+
       const face = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.35, depthWrite: false }));
-      face.scale.set(0.7, 0.7, 0.7);
-      face.position.z = 0.25;
+      face.scale.set(0.95, 0.95, 0.95);
+      face.position.z = 0.30;
 
       g.add(body);
       g.add(face);
 
       this.obj = g;
-      this.radius = 0.34;
-      this.points = 10;
+      this.radius = 0.50;
+      this.points = 12;
       this.tint = new THREE.Color(0xff5fd7);
     }
 
-    this.obj.position.set(rand(-2.2, 2.2), rand(-1.3, 1.9), rand(-2.8, -1.2));
-    this.v = new THREE.Vector3(rand(-0.6, 0.6), rand(-0.45, 0.45), rand(-0.22, 0.22));
+    /* 멀리 배치 */
+    this.obj.position.set(rand(-3.2, 3.2), rand(-2.0, 2.3), rand(-10.8, -6.4));
+    this.v = new THREE.Vector3(rand(-0.75, 0.75), rand(-0.55, 0.55), rand(-0.35, 0.35));
+
     scene.add(this.obj);
   }
 
@@ -234,16 +255,16 @@ class Target {
     this.obj.rotation.y += dt * 1.3;
     this.obj.rotation.x += dt * 0.8;
 
-    const wobX = Math.sin(this.phase) * 0.28;
-    const wobY = Math.cos(this.phase * 0.9) * 0.24;
+    const wobX = Math.sin(this.phase) * 0.35;
+    const wobY = Math.cos(this.phase * 0.9) * 0.30;
 
     this.obj.position.x += (this.v.x + wobX) * dt;
     this.obj.position.y += (this.v.y + wobY) * dt;
     this.obj.position.z += this.v.z * dt;
 
-    if (this.obj.position.x < -2.6 || this.obj.position.x > 2.6) this.v.x *= -1;
-    if (this.obj.position.y < -1.8 || this.obj.position.y > 2.2) this.v.y *= -1;
-    if (this.obj.position.z < -3.2 || this.obj.position.z > -0.9) this.v.z *= -1;
+    if (this.obj.position.x < -3.6 || this.obj.position.x > 3.6) this.v.x *= -1;
+    if (this.obj.position.y < -2.4 || this.obj.position.y > 2.7) this.v.y *= -1;
+    if (this.obj.position.z < -12.2 || this.obj.position.z > -5.6) this.v.z *= -1;
   }
 
   kill() {
@@ -276,22 +297,20 @@ class PaintBullet {
       color: tint
     }));
     spr.position.copy(pos);
-    spr.scale.set(0.28, 0.28, 0.28);
+    spr.scale.set(0.34, 0.34, 0.34);
 
     this.spr = spr;
     this.vel = vel.clone();
-    this.life = 1.6;
+    this.life = 1.9;
     this.age = 0;
 
     scene.add(this.spr);
   }
   update(dt) {
     this.age += dt;
-    this.vel.multiplyScalar(0.992);
+    this.vel.multiplyScalar(0.994);
     this.spr.position.addScaledVector(this.vel, dt);
     this.spr.material.opacity = Math.max(0, 0.9 * (1 - this.age / this.life));
-    const s = 0.28 * (1 - this.age / this.life) + 0.12;
-    this.spr.scale.set(s, s, s);
   }
   dead() { return this.age >= this.life; }
   kill() {
@@ -301,12 +320,12 @@ class PaintBullet {
 }
 const bullets = [];
 
-/* Gun model */
+/* Gun model 크게, 손에 감기는 느낌 */
 function makeGun() {
   const g = new THREE.Group();
 
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.55, 0.22, 0.22),
+    new THREE.BoxGeometry(0.95, 0.30, 0.30),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(0x7be3ff),
@@ -315,10 +334,22 @@ function makeGun() {
       metalness: 0.2
     })
   );
-  body.position.set(0.18, 0, 0);
+  body.position.set(0.34, 0.02, 0);
+
+  const slide = new THREE.Mesh(
+    new THREE.BoxGeometry(0.85, 0.16, 0.26),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: new THREE.Color(0x4bbdff),
+      emissiveIntensity: 0.22,
+      roughness: 0.28,
+      metalness: 0.18
+    })
+  );
+  slide.position.set(0.30, 0.14, 0);
 
   const grip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.16, 0.34, 0.18),
+    new THREE.BoxGeometry(0.22, 0.60, 0.26),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(0x4bbdff),
@@ -327,29 +358,39 @@ function makeGun() {
       metalness: 0.1
     })
   );
-  grip.position.set(0.06, -0.22, 0);
+  grip.position.set(0.10, -0.34, 0);
 
-  const muzzle = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.06, 0.06, 0.20, 14),
+  const triggerGuard = new THREE.Mesh(
+    new THREE.TorusGeometry(0.16, 0.05, 10, 18, Math.PI * 1.25),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 0.2,
+      emissiveIntensity: 0.08,
+      roughness: 0.35,
+      metalness: 0.05
+    })
+  );
+  triggerGuard.rotation.z = Math.PI * 0.15;
+  triggerGuard.position.set(0.18, -0.10, 0.12);
+
+  const muzzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.07, 0.26, 14),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.18,
       roughness: 0.2,
       metalness: 0.1
     })
   );
   muzzle.rotation.z = Math.PI * 0.5;
-  muzzle.position.set(0.46, 0, 0);
+  muzzle.position.set(0.74, 0.10, 0);
 
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.55, depthWrite: false }));
-  glow.scale.set(0.75, 0.75, 0.75);
-  glow.position.set(0.18, 0, 0);
+  glow.scale.set(1.05, 1.05, 1.05);
+  glow.position.set(0.28, 0.02, 0);
 
-  g.add(body);
-  g.add(grip);
-  g.add(muzzle);
-  g.add(glow);
+  g.add(body, slide, grip, triggerGuard, muzzle, glow);
 
   return { group: g, muzzle };
 }
@@ -357,7 +398,7 @@ const gun = makeGun();
 scene.add(gun.group);
 gun.group.visible = false;
 
-/* Game state */
+/* Game */
 let score = 0;
 let combo = 0;
 let comboUntil = 0;
@@ -368,17 +409,19 @@ function setHUD() {
   targetsEl.textContent = String(targets.filter(t => t.alive).length);
 }
 
-/* Hand state */
+/* Hand */
 let lastLandmarks = null;
 
 let hand = {
   has: false,
-  open: false,
+  gunPose: false,
   trigger: false,
   wristX: 0, wristY: 0,
   palmX: 0, palmY: 0,
   indexMcpX: 0, indexMcpY: 0,
-  indexTipX: 0, indexTipY: 0
+  indexTipX: 0, indexTipY: 0,
+  indexPipX: 0, indexPipY: 0,
+  thumbTipX: 0, thumbTipY: 0
 };
 
 let smooth = {
@@ -386,9 +429,12 @@ let smooth = {
   wristX: 0, wristY: 0,
   palmX: 0, palmY: 0,
   indexMcpX: 0, indexMcpY: 0,
+  indexPipX: 0, indexPipY: 0,
   indexTipX: 0, indexTipY: 0,
-  openScore: 0,
-  curlDist: 999
+  thumbTipX: 0, thumbTipY: 0,
+
+  gunScore: 0,
+  curlRatio: 1
 };
 
 function smoothStep(raw) {
@@ -410,40 +456,71 @@ function smoothStep(raw) {
   smooth.indexMcpX = lerp(smooth.indexMcpX, raw.indexMcpX, a);
   smooth.indexMcpY = lerp(smooth.indexMcpY, raw.indexMcpY, a);
 
+  smooth.indexPipX = lerp(smooth.indexPipX, raw.indexPipX, a);
+  smooth.indexPipY = lerp(smooth.indexPipY, raw.indexPipY, a);
+
   smooth.indexTipX = lerp(smooth.indexTipX, raw.indexTipX, a);
   smooth.indexTipY = lerp(smooth.indexTipY, raw.indexTipY, a);
 
-  smooth.openScore = lerp(smooth.openScore, raw.openScore, b);
-  smooth.curlDist = lerp(smooth.curlDist, raw.curlDist, b);
+  smooth.thumbTipX = lerp(smooth.thumbTipX, raw.thumbTipX, a);
+  smooth.thumbTipY = lerp(smooth.thumbTipY, raw.thumbTipY, a);
+
+  smooth.gunScore = lerp(smooth.gunScore, raw.gunScore, b);
+  smooth.curlRatio = lerp(smooth.curlRatio, raw.curlRatio, b);
+}
+
+function fingerExtended(tip, pip, mcp) {
+  return tip.y < pip.y && pip.y < mcp.y;
+}
+function fingerCurled(tip, pip) {
+  return tip.y > pip.y;
 }
 
 function parseHand(lm) {
   const wrist = lmToScreen(lm[0]);
   const palm = lmToScreen(lm[9]);
+
   const indexMcp = lmToScreen(lm[5]);
+  const indexPip = lmToScreen(lm[6]);
   const indexTip = lmToScreen(lm[8]);
 
+  const middleMcp = lmToScreen(lm[9]);
+  const middlePip = lmToScreen(lm[10]);
   const middleTip = lmToScreen(lm[12]);
-  const ringTip = lmToScreen(lm[16]);
-  const pinkyTip = lmToScreen(lm[20]);
+
   const ringMcp = lmToScreen(lm[13]);
+  const ringPip = lmToScreen(lm[14]);
+  const ringTip = lmToScreen(lm[16]);
+
   const pinkyMcp = lmToScreen(lm[17]);
+  const pinkyPip = lmToScreen(lm[18]);
+  const pinkyTip = lmToScreen(lm[20]);
 
-  const extIndex = indexTip.y < indexMcp.y ? 1 : 0;
-  const extMiddle = middleTip.y < palm.y ? 1 : 0;
-  const extRing = ringTip.y < ringMcp.y ? 1 : 0;
-  const extPinky = pinkyTip.y < pinkyMcp.y ? 1 : 0;
-  const openScore = (extIndex + extMiddle + extRing + extPinky) / 4;
+  const thumbTip = lmToScreen(lm[4]);
 
-  const curlDist = dist(indexTip.x, indexTip.y, palm.x, palm.y);
+  const idxExt = fingerExtended(indexTip, indexPip, indexMcp) ? 1 : 0;
+  const midCurl = fingerCurled(middleTip, middlePip) ? 1 : 0;
+  const ringCurl = fingerCurled(ringTip, ringPip) ? 1 : 0;
+  const pinkCurl = fingerCurled(pinkyTip, pinkyPip) ? 1 : 0;
+
+  const gunScore = (idxExt + midCurl + ringCurl + pinkCurl) / 4;
+
+  const palmSpan = dist(wrist.x, wrist.y, palm.x, palm.y);
+  const idxCurlDist = dist(indexTip.x, indexTip.y, palm.x, palm.y);
+  const curlRatio = idxCurlDist / Math.max(1, palmSpan);
 
   return {
     wristX: wrist.x, wristY: wrist.y,
     palmX: palm.x, palmY: palm.y,
+
     indexMcpX: indexMcp.x, indexMcpY: indexMcp.y,
+    indexPipX: indexPip.x, indexPipY: indexPip.y,
     indexTipX: indexTip.x, indexTipY: indexTip.y,
-    openScore,
-    curlDist
+
+    thumbTipX: thumbTip.x, thumbTipY: thumbTip.y,
+
+    gunScore,
+    curlRatio
   };
 }
 
@@ -468,29 +545,38 @@ hands.onResults((results) => {
     smoothStep(raw);
 
     hand.has = true;
+
     hand.wristX = smooth.wristX;
     hand.wristY = smooth.wristY;
     hand.palmX = smooth.palmX;
     hand.palmY = smooth.palmY;
+
     hand.indexMcpX = smooth.indexMcpX;
     hand.indexMcpY = smooth.indexMcpY;
+    hand.indexPipX = smooth.indexPipX;
+    hand.indexPipY = smooth.indexPipY;
     hand.indexTipX = smooth.indexTipX;
     hand.indexTipY = smooth.indexTipY;
 
-    hand.open = smooth.openScore > 0.55;
+    hand.thumbTipX = smooth.thumbTipX;
+    hand.thumbTipY = smooth.thumbTipY;
 
-    // 손 크기 비율 기반 트리거
-    const palmSpan = dist(smooth.wristX, smooth.wristY, smooth.palmX, smooth.palmY);
-    const curl = smooth.curlDist / Math.max(1, palmSpan);
+    /* 건 포즈 히스테리시스 */
+    const onScore = 0.62;
+    const offScore = 0.52;
+    if (!hand.gunPose && smooth.gunScore > onScore) hand.gunPose = true;
+    if (hand.gunPose && smooth.gunScore < offScore) hand.gunPose = false;
 
-    const onRatio = 0.78;
-    const offRatio = 0.88;
-    if (!hand.trigger && curl < onRatio) hand.trigger = true;
-    if (hand.trigger && curl > offRatio) hand.trigger = false;
+    /* 트리거는 검지 살짝 굽힘으로 */
+    const onCurl = 0.78;
+    const offCurl = 0.86;
+    if (!hand.trigger && smooth.curlRatio < onCurl) hand.trigger = true;
+    if (hand.trigger && smooth.curlRatio > offCurl) hand.trigger = false;
+
   } else {
     lastLandmarks = null;
     hand.has = false;
-    hand.open = false;
+    hand.gunPose = false;
     hand.trigger = false;
     smooth.init = false;
   }
@@ -510,7 +596,7 @@ async function startCamera() {
   await mpCamera.start();
 }
 
-/* Hand skeleton */
+/* Hand debug */
 function drawHandDebug() {
   if (!lastLandmarks) return;
 
@@ -544,20 +630,23 @@ function drawHandDebug() {
 let shootCooldown = 0;
 
 function updateGun(dt) {
-  if (!hand.has || !hand.open) {
+  if (!hand.has || !hand.gunPose) {
     gun.group.visible = false;
     return;
   }
 
   gun.group.visible = true;
 
-  const zPlane = 0;
+  /* 총을 손 가까운 평면에 두고, 총알은 멀리로 */
+  const zPlane = -1.2;
 
   const wristW = screenToWorldOnPlane(hand.wristX, hand.wristY, zPlane);
   const indexMcpW = screenToWorldOnPlane(hand.indexMcpX, hand.indexMcpY, zPlane);
+  const indexTipW = screenToWorldOnPlane(hand.indexTipX, hand.indexTipY, zPlane);
   const palmW = screenToWorldOnPlane(hand.palmX, hand.palmY, zPlane);
 
-  const forward = indexMcpW.clone().sub(wristW);
+  /* 방향은 검지 뿌리에서 검지 끝 */
+  const forward = indexTipW.clone().sub(indexMcpW);
   if (forward.length() < 0.001) forward.set(1, 0, 0);
   forward.normalize();
 
@@ -568,44 +657,53 @@ function updateGun(dt) {
   const right = new THREE.Vector3().crossVectors(forward, upHint).normalize();
   const up = new THREE.Vector3().crossVectors(right, forward).normalize();
 
-  // 손 크기 기반 스케일
+  /* 손 크기 기반 스케일, 조금 더 크게 */
   const palmPx = dist(hand.wristX, hand.wristY, hand.palmX, hand.palmY);
-  const palmPxClamped = clamp(palmPx, 90, 220);
+  const palmPxClamped = clamp(palmPx, 90, 240);
 
   const wA = screenToWorldOnPlane(hand.palmX, hand.palmY, zPlane);
   const wB = screenToWorldOnPlane(hand.palmX + 100, hand.palmY, zPlane);
   const unitsPerPx = wA.distanceTo(wB) / 100;
 
   const palmWorld = palmPxClamped * unitsPerPx;
-  const base = 0.55;
-  const s = clamp(palmWorld / base, 0.75, 1.35);
-  gun.group.scale.lerp(new THREE.Vector3(s, s, s), clamp(dt * 16, 0, 1));
+  const base = 0.60;
+  const s = clamp((palmWorld / base) * 1.35, 0.95, 1.85);
 
-  // 손에 감기는 오프셋
-  const anchor = wristW.clone()
-    .addScaledVector(forward, 0.28 * s)
-    .addScaledVector(right, 0.12 * s)
-    .addScaledVector(up, 0.02 * s);
+  gun.group.scale.lerp(new THREE.Vector3(s, s, s), clamp(dt * 18, 0, 1));
+
+  /* 총 위치를 손목이 아니라 검지 뿌리 쪽으로 */
+  const anchor = indexMcpW.clone()
+    .addScaledVector(forward, 0.20 * s)
+    .addScaledVector(right, 0.10 * s)
+    .addScaledVector(up, -0.04 * s);
 
   const basis = new THREE.Matrix4().makeBasis(forward, up, right);
   const q = new THREE.Quaternion().setFromRotationMatrix(basis);
 
-  // 모델 누움 보정
-  const fix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
-  q.multiply(fix);
+  /* 모델 축 보정 */
+  const fixZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+  q.multiply(fixZ);
 
-  gun.group.position.lerp(anchor, clamp(dt * 18, 0, 1));
-  gun.group.quaternion.slerp(q, clamp(dt * 18, 0, 1));
+  gun.group.position.lerp(anchor, clamp(dt * 20, 0, 1));
+  gun.group.quaternion.slerp(q, clamp(dt * 20, 0, 1));
 
+  /* 발사 방향은 검지 끝에서 화면 중앙으로 나가는 느낌 */
   const t = nowMs();
   if (hand.trigger && t > shootCooldown) {
-    shootCooldown = t + 90;
+    shootCooldown = t + 85;
 
     const muzzleW = gun.muzzle.getWorldPosition(new THREE.Vector3());
-    const vel = forward.clone().multiplyScalar(8.5);
 
-    bullets.push(new PaintBullet(muzzleW, vel, new THREE.Color(0x7be3ff)));
-    burst.spawn(muzzleW, 10, 0.8, new THREE.Color(0x7be3ff));
+    const ray = screenRay(hand.indexTipX, hand.indexTipY);
+    const toZ = -9.0;
+    const k = (toZ - ray.origin.z) / ray.dir.z;
+    const aimPoint = ray.origin.clone().addScaledVector(ray.dir, k);
+
+    const vel = aimPoint.clone().sub(muzzleW).normalize().multiplyScalar(16.0);
+
+    const tint = new THREE.Color(0x7be3ff);
+    bullets.push(new PaintBullet(muzzleW, vel, tint));
+    burst.spawn(muzzleW, 12, 1.0, tint);
   }
 }
 
@@ -620,10 +718,11 @@ function checkHits() {
       const d = b.spr.position.distanceTo(t.obj.position);
       if (d < t.radius) {
         const hitPos = t.obj.position.clone();
-        burst.spawn(hitPos, 26, 1.5, t.tint);
+        burst.spawn(hitPos, 30, 1.8, t.tint);
         t.kill();
 
         score += t.points + combo * 2;
+
         const n = nowMs();
         if (n <= comboUntil) combo += 1;
         else combo = 1;
@@ -641,7 +740,7 @@ function checkHits() {
   }
 }
 
-/* HUD draw */
+/* HUD */
 function drawHud() {
   const w = hud.clientWidth;
   const h = hud.clientHeight;
@@ -653,22 +752,10 @@ function drawHud() {
     hctx.fillStyle = hand.trigger ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)";
     hctx.fill();
 
-    hctx.beginPath();
-    hctx.arc(hand.palmX, hand.palmY, 15, 0, Math.PI * 2);
-    hctx.strokeStyle = "rgba(255,255,255,0.55)";
-    hctx.lineWidth = 2;
-    hctx.stroke();
-
     hctx.font = "700 16px -apple-system, system-ui, sans-serif";
     hctx.fillStyle = "rgba(255,255,255,0.9)";
-    hctx.fillText(hand.open ? "GUN ON" : "GUN OFF", 16, 92);
+    hctx.fillText(hand.gunPose ? "GUN ON" : "GUN OFF", 16, 92);
     hctx.fillText(hand.trigger ? "TRIGGER" : "READY", 16, 114);
-  }
-
-  if (combo >= 5) {
-    hctx.font = "700 20px -apple-system, system-ui, sans-serif";
-    hctx.fillStyle = "rgba(255,255,255,0.92)";
-    hctx.fillText(`COMBO ${combo}`, 16, 80);
   }
 
   drawHandDebug();
@@ -706,7 +793,7 @@ function tick() {
 
   spawnTimer += dt;
   const desired = clamp(7 + Math.floor(combo / 3), 7, 12);
-  if (spawnTimer > 1.0 && targets.length < desired) {
+  if (spawnTimer > 0.9 && targets.length < desired) {
     spawnTimer = 0;
     spawnTargets(1);
   }
