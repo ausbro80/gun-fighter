@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Hand Gun Paint AR Demo</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <!-- 캐시 꼬임 방지용 버전 -->
+  <script type="module" src="main.js?v=1001"></script>
+</head>
+<body>
+  <div id="app">
+    <video id="video" playsinline></video>
+    <canvas id="hud"></canvas>
+
+    <div class="ui">
+      <div class="top">
+        <div class="pill">Score <span id="score">0</span></div>
+        <div class="pill">Combo <span id="combo">0</span></div>
+        <div class="pill">Targets <span id="targets">0</span></div>
+      </div>
+
+      <div class="bottom">
+        <button id="start">Start</button>
+        <button id="reset">Reset</button>
+        <button id="spawn">Spawn</button>
+      </div>
+
+      <div class="hint">
+        손바닥 펼치기: 총 장착, 검지 굽히기: 발사, 손바닥 접기: 총 해제
+      </div>
+    </div>
+  </div>
+</body>
+</html>
